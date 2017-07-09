@@ -6,47 +6,54 @@ import argparse
 import qrcode
 
 def get_vars(path):
-    f = open(path, "r").read()
-    return json.loads(f)
+    configuration = open(path, "r").read()
+    return json.loads(configuration)
 
-def ss_uri(q, password = True):
+def ss_url(q, password = True):
     url = ""
-    if password:
-        url = q["method"] + ":" + q["password"] + "@" + \
-              q["server"] + ":" + str(q["server_port"])
-    else:
-        url = q["method"] + ":@" + \
-              q["server"] + ":" + str(q["server_port"])
+    if not password:
+        q["password"] = ""
 
-    url = "ss://" + base64.b64encode(bytes(url, "ascii")).decode()
-    return url
+    url = q["method"] + ":" + q["password"] + "@" \
+          + q["server"] + ":" + str(q["server_port"])
 
-def ss_qr(uri):
+    return "ss://" + base64.b64encode(bytes(url, "ascii")).decode()
+
+def ss_qr(url):
     qr = qrcode.QRCode()
-    qr.add_data(uri)
+    qr.add_data(url)
     return qr
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate Shadowsocks URL from configuration")
-    parser.add_argument("config", help = "Path to the configuration file")
-    parser.add_argument("-q", "--qr", help = "Print the QR code",
+    parser = argparse.ArgumentParser(description = "Generate Shadowsocks URL from configuration")
+    parser.add_argument("config", help = "Path to configuration file")
+    parser.add_argument("-q", "--qr", help = "Print QR code",
                         action = "store_true")
-    parser.add_argument("-n", "--nopass", help = "Exclude the password field",
+    parser.add_argument("-n", "--nopass", help = "Exclude password field",
                         action = "store_false")
-    parser.add_argument("-p", "--png", help = "Save the QR code as a PNG",
+    parser.add_argument("-p", "--png", help = "Save QR code as PNG",
+                        action = "store_true")
+    parser.add_argument("-s", "--svg", help = "Save QR code as SVG",
                         action = "store_true")
 
     args = parser.parse_args()
 
     q = get_vars(args.config)
-    url = ss_uri(q, password = args.nopass)
+    url = ss_url(q, password = args.nopass)
     print(url)
+
     if args.qr:
         qr = ss_qr(url)
         qr.print_ascii(tty = True)
     if args.png:
+        path = q["server"] + ".png"
         qr = ss_qr(url)
-        extension = "png"
-        path = q["server"] + "." + extension
-        qr.make_image().save(path, extension.upper())
+        qr.make_image().save(path)
+        print("Saved to", path)
+    if args.svg:
+        from qrcode.image.svg import SvgPathImage as svg_image
+        path = q["server"] + ".svg"
+        qr = ss_qr(url)
+        img = qr.make_image(svg_image).save(path)
+        print("Saved to", path)
 
