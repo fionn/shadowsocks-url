@@ -11,27 +11,45 @@ from pathlib import Path
 import qrcode #type: ignore
 from qrcode.image.svg import SvgPathImage #type: ignore
 
-def get_config(path: Path) -> Dict[str, str]:
-    """Return the config as a dict"""
-    with path.open() as config:
-        return json.loads(config.read())
+class SSConfigurationError(Exception):
+    """Raised when configuration fails to validate"""
 
-def ss_url(config: Dict[str, str], exclude_password: bool = True) -> str:
-    """Build the ss:// URL"""
-    if exclude_password:
-        config["password"] = ""
+class SS:
+    """Shadowsocks"""
 
-    url = config["method"] + ":" + config["password"] + "@" \
-          + config["server"] + ":" + str(config["server_port"])
+    def __init__(self, config: Dict[str, str], nopass: bool = True) -> None:
+        self.config = config
+        self.exclude_password = nopass
+        self._validate()
 
-    return "ss://" + base64.b64encode(bytes(url, "ascii")).decode()
+    def _validate(self) -> None:
+        keys = ["method", "server", "server_port"]
 
-def ss_qr(url: str) -> qrcode.QRCode:
-    """Make the QRCode object"""
-    # pylint: disable=invalid-name
-    qr = qrcode.QRCode()
-    qr.add_data(url)
-    return qr
+        if not self.exclude_password:
+            keys.append("password")
+
+        for key in keys:
+            if key not in self.config:
+                raise SSConfigurationError(f"Config must contain a key for \"{key}\"")
+
+    @property
+    def url(self) -> str:
+        """Build the ss:// URL"""
+        if self.exclude_password:
+            self.config["password"] = ""
+
+        url = self.config["method"] + ":" + self.config["password"] + "@" \
+            + self.config["server"] + ":" + str(self.config["server_port"])
+
+        return "ss://" + base64.b64encode(bytes(url, "ascii")).decode()
+
+    @property
+    def qr(self) -> qrcode.QRCode:
+        """Make the QRCode object"""
+        # pylint: disable=invalid-name
+        qr = qrcode.QRCode()
+        qr.add_data(self.url)
+        return qr
 
 def main() -> None:
     """Entry point"""
@@ -41,30 +59,22 @@ def main() -> None:
                         action="store_true")
     parser.add_argument("-n", "--nopass", help="Exclude password field",
                         action="store_true")
-    parser.add_argument("-p", "--png", help="Save QR code as PNG",
-                        action="store_true")
     parser.add_argument("-s", "--svg", help="Save QR code as SVG",
                         action="store_true")
 
     args = parser.parse_args()
 
-    config = get_config(args.config)
-    url = ss_url(config, exclude_password=args.nopass)
-    print(url)
+    with args.config.open() as config:
+        ss = SS(json.loads(config.read()), args.nopass) # pylint: disable=invalid-name
 
-    qr = ss_qr(url) # pylint: disable=invalid-name
+    print(ss.url)
 
     if args.qr:
-        qr.print_ascii(tty=True)
-
-    if args.png:
-        path = config["server"] + ".png"
-        qr.make_image().save(path)
-        print(f"Saved to {path}", file=sys.stderr)
+        ss.qr.print_ascii(tty=True)
 
     if args.svg:
-        path = config["server"] + ".svg"
-        qr.make_image(SvgPathImage).save(path)
+        path = ss.config["server"] + ".svg"
+        ss.qr.make_image(SvgPathImage).save(path)
         print(f"Saved to {path}", file=sys.stderr)
 
 if __name__ == "__main__":

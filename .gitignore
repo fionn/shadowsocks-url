@@ -1,5 +1,3 @@
 *.swp
-*.png
 *.svg
 venv/
-
